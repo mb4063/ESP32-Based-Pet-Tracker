@@ -33,7 +33,6 @@ FirebaseAuth auth;
 FirebaseConfig configF;
 unsigned long sendDataPrevMillis = 0;
 unsigned long getDataPrevMillis = 0;
-bool signupOK = false;
 int intValue=0;
 int count = 1;
 
@@ -63,23 +62,17 @@ void setup() {
   auth.user.password = USER_PASSWORD;
   configF.database_url = DATABASE_URL;
 
-  //Sign up to Firebase
-  if (Firebase.signUp(&configF, &auth, USER_EMAIL, USER_PASSWORD)) {
-    Serial.println("ok");
-    signupOK = true;
-  }
-  else {
-    Serial.printf("%s\n", configF.signer.signupError.message.c_str());
-  }
+  
   //Assign the callback function for the long running token generation task
   configF.token_status_callback = tokenStatusCallback; //see addons/TokenHelper.h
-
   Firebase.begin(&configF, &auth);
   Firebase.reconnectWiFi(true);
+  if(Firebase.ready())
+  Serial.println("Firebase ready!");
 }
 void loop() {
   // veritabanındaki  test/int  tablo/veri hücresine veri yazalım
-  if (Firebase.ready() && signupOK && (millis() - sendDataPrevMillis > 15000 || sendDataPrevMillis == 0)) {
+  if (Firebase.ready() && (millis() - sendDataPrevMillis > 15000 || sendDataPrevMillis == 0)) {
     sendDataPrevMillis = millis();
     
     if (Firebase.RTDB.setInt(&fbdo, "test/int", count)) {
@@ -97,7 +90,7 @@ void loop() {
 
   } 
  // Database testing
- if (Firebase.ready() && signupOK && (millis() - getDataPrevMillis > 16000 || getDataPrevMillis == 0)) {
+ if (Firebase.ready() && (millis() - getDataPrevMillis > 16000 || getDataPrevMillis == 0)) {
    getDataPrevMillis = millis();
    if (Firebase.RTDB.getInt(&fbdo, "/test/int")) {
       if (fbdo.dataType() == "int") { //Checking for received data if it is int
