@@ -64,7 +64,7 @@ void setup() {
   configF.database_url = DATABASE_URL;
 
   //Sign up to Firebase
-  if (Firebase.signUp(&configF, &auth, "", "")) {
+  if (Firebase.signUp(&configF, &auth, USER_EMAIL, USER_PASSWORD)) {
     Serial.println("ok");
     signupOK = true;
   }
