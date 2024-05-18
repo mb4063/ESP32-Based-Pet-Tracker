@@ -127,6 +127,9 @@ void loop() {
       String den = "git la";
       String temp = "{\"date\": \"2pm\", \"name\": \"John\"}";
       PostToFirebase("PUT", FIREBASE_PATH, temp, &http_client);
+      Serial.println("getting from firebase");
+      delay(1000);
+      GetFirebase("PATCH", FIREBASE_PATH, &http_client);
     }
   }
   //MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
@@ -173,6 +176,39 @@ void PostToFirebase(const char* method, const String & path , const String & dat
     Serial.println("HTTP POST disconnected");
   }
   //NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN
+}
+
+void GetFirebase(const char* method, const String & path ,  HttpClient* http)
+{
+  String response;
+  int statusCode = 0;
+  http->connectionKeepAlive(); // Currently, this is needed for HTTPS
+ 
+  String url;
+  if (path[0] != '/')
+  {
+    url = "/";
+  }
+  url += path + ".json";
+  url += "?auth=" + FIREBASE_AUTH;
+
+  http->get(url);
+ 
+ //statusCode = http->responseStatusCode();
+ // Serial.print("Status code: ");
+  //Serial.println(statusCode);
+  response = http->responseBody();
+ 
+  Serial.print("Response: ");
+  Serial.println(response);
+
+  if (!http->connected())
+  {
+    Serial.println();
+    http->stop();// Shutdown
+    Serial.println("HTTP POST disconnected");
+  }
+ 
 }
 //**************************************************************************************************
 
