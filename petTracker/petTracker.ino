@@ -8,20 +8,13 @@
 #include "soc/rtc_cntl_reg.h"  // Disable brownout problems
 #include "driver/rtc_io.h"
 #include <LittleFS.h>
+#include <WiFi.h>
 #include <SoftwareSerial.h>
 //Tokens for RTDB connection
 #include "addons/TokenHelper.h"
 #include "addons/RTDBHelper.h"
 
 SoftwareSerial sim808(13, 15);  // RX, TX
-
-unsigned long loopTime = 0;
-unsigned long serialTime = 0;
-char GPSData[100] = {0};
-char GPSTemp[100];
-float latitude, longitude = 0.0;
-String msggelen;
-String msggiden;
 
 //Network credentials
 const char* ssid = "";
@@ -38,7 +31,7 @@ const char* password = "";
 #define STORAGE_BUCKET_ID ""
 
 //Database url
-#define DATABASE_URL "https://pet-tracker-e6c45-default-rtdb.europe-west1.firebasedatabase.app/"
+#define DATABASE_URL ""
 //Data path for photo
 #define FILE_PHOTO_PATH "/photo.jpg"
 #define BUCKET_PHOTO "/data/photo.jpg"
@@ -61,6 +54,19 @@ const char* password = "";
 #define HREF_GPIO_NUM 23
 #define PCLK_GPIO_NUM 22
 
+//Variables for GPS module
+unsigned long loopTime = 0;
+unsigned long serialTime = 0;
+char GPSData[100] = {0};
+char GPSTemp[100];
+float latitude, longitude, fenceLatitude, fenceLongitude, fenceDistance = 0.0;
+bool isPetIN = false;
+String msgFrmSIM;
+String msgToSIM;
+
+
+
+//Boolean variables for flow control
 bool takeNewPhoto = false;
 bool isFbReady = false;
 bool isPhotoUploaded = false;
@@ -208,6 +214,7 @@ void setsim808() {
   delay(700);  // STORE active profile
 }
 
+//Reading GPS from SIM808 module
 void rdGPS() {
   sim808.print("AT+CGNSINF\r\n");
   serialTime = loopTime;
@@ -234,6 +241,9 @@ void rdGPS() {
   latitude = atof(tmp1);
   tmp1 = strtok(NULL, ",");
   longitude = atof(tmp1);
+
+  //Sending data to the Firebase RTDB
+  GPSToFirebase();
 }
 
 
@@ -281,43 +291,22 @@ void loop() {
   delay(100);
   readSerialPort();
   delay(100);
-  if (msggiden != "") {
+  if (msgToSIM != "") {
     Serial.print("bizden giden : ");
-    Serial.println(msggiden);
-    sim808.print(msggiden);
-    msggiden = "";
+    Serial.println(msgToSIM);
+    sim808.print(msgToSIM);
+    msgToSIM = "";
   }
-  if (msggelen != "") {
+  if (msgFrmSIM != "") {
     Serial.println("sim808 GELEN:  ");
-    Serial.println(msggelen);
-    msggelen = "";
+    Serial.println(msgFrmSIM);
+    msgFrmSIM = "";
   }
-  rdGPS();
-  delay(1000);
-  Serial.printf("latitude: %f\n", latitude);
-  Serial.printf("longitude: %f\n", longitude);
+  
   
   
   if (takeNewPhoto) {
-    capturePhotoSaveLittleFS();
-    takeNewPhoto = false;
-    isPhotoUploaded = false;
-
-  //Sending takeNewPhoto as false to the RTDB
-  if (Firebase.ready()) {
-    sendDataPrevMillis = millis();
-
-    if (Firebase.RTDB.setInt(&fbdo, "test/bool", takeNewPhoto)) {
-      Serial.println("Writing Successful!");
-      Serial.println("Path: " + fbdo.dataPath());
-      Serial.println("Data type: " + fbdo.dataType());
-    } else {
-      Serial.println("ERROR: " + fbdo.errorReason());
-    }
-  }
-
-  
-
+    takePhoto();
   }
   delay(1);
   if (Firebase.ready() && !isPhotoUploaded) {
@@ -334,19 +323,19 @@ void loop() {
   }
 
   
-  //Database testing
-  if (Firebase.ready() && (millis() - getDataPrevMillis > 16000 || getDataPrevMillis == 0)) {
+  //20 second interval for getting GPS data from module and other values from RTDB
+  if (Firebase.ready() && (millis() - getDataPrevMillis > 20000 || getDataPrevMillis == 0)) {
     getDataPrevMillis = millis();
-    if (Firebase.RTDB.getInt(&fbdo, "/test/bool")) {
-      Serial.println("Reading");
-      if (fbdo.dataType() == "boolean") {
-        Serial.println("it is bool");  //Checking for received data if it is bool
-        takeNewPhoto = fbdo.boolData();
-        Serial.println(takeNewPhoto);
-      }
-    } else {
-      Serial.println(fbdo.errorReason());
-    }
+
+    //Getting GPS and sending it to the RTDB
+    rdGPS();
+    delay(1000);
+    Serial.printf("latitude: %f\n", latitude);
+    Serial.printf("longitude: %f\n", longitude);
+    
+    //Getting values from database
+    getFromRTDB();
+    
   }
 }
 
@@ -398,7 +387,7 @@ void GPSToFirebase() {
   }
 }
 
-
+//Reads messages from SIM
 void readsimPort() {
   serialTime = loopTime;
   delay(1);
@@ -408,7 +397,7 @@ void readsimPort() {
       loopTime = millis();
       serialTime = loopTime;
       char c = sim808.read();  //gets one byte from serial buffer
-      msggelen += c;           //makes the string readString
+      msgFrmSIM += c;           //makes the string readString
     }
   }
   sim808.flush();
@@ -420,9 +409,72 @@ void readSerialPort() {
     delay(10);
     if (Serial.available() > 0) {
       char d = Serial.read();  //gets one byte from serial buffer
-      msggiden += d;           //makes the string readString
+      msgToSIM += d;           //makes the string readString
     }
   }
   Serial.flush();
   delay(700);
+}
+
+//Captures a new photo
+void takePhoto() {
+  capturePhotoSaveLittleFS();
+    takeNewPhoto = false;
+    isPhotoUploaded = false;
+  
+  //Sending takeNewPhoto as false to the RTDB
+  if (Firebase.ready()) {
+    sendDataPrevMillis = millis();
+
+    if (Firebase.RTDB.setInt(&fbdo, "camera/bool", takeNewPhoto)) {
+      Serial.println("Writing Successful!");
+      Serial.println("Path: " + fbdo.dataPath());
+      Serial.println("Data type: " + fbdo.dataType());
+    } else {
+      Serial.println("ERROR: " + fbdo.errorReason());
+    }
+  }
+}
+
+void getFromRTDB() {
+  if (Firebase.RTDB.getInt(&fbdo, "/camera/bool")) {
+      Serial.println("Reading");
+      if (fbdo.dataType() == "boolean") {
+        Serial.println("it is bool");  //Checking for received data if it is bool
+        takeNewPhoto = fbdo.boolData();
+        Serial.println(takeNewPhoto);
+      }
+    } else {
+      Serial.println(fbdo.errorReason());
+    }
+
+    if (Firebase.RTDB.getFloat(&fbdo, "/fence/latitude")) {
+      Serial.println("Reading");
+      if (fbdo.dataType() == "float") { //Checking for received data if it is float
+        fenceLatitude = fbdo.floatData();
+        Serial.println(fenceLatitude);
+      }
+    } else {
+      Serial.println(fbdo.errorReason());
+    }
+
+    if (Firebase.RTDB.getFloat(&fbdo, "/fence/longitude")) {
+      Serial.println("Reading");
+      if (fbdo.dataType() == "float") { //Checking for received data if it is float
+        fenceLongitude = fbdo.floatData();
+        Serial.println(fenceLongitude);
+      }
+    } else {
+      Serial.println(fbdo.errorReason());
+    }
+
+    if (Firebase.RTDB.getFloat(&fbdo, "/fence/distance")) {
+      Serial.println("Reading");
+      if (fbdo.dataType() == "float") { //Checking for received data if it is float
+        fenceDistance = fbdo.floatData();
+        Serial.println(fenceDistance);
+      }
+    } else {
+      Serial.println(fbdo.errorReason());
+    }
 }
