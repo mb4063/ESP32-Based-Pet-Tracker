@@ -3,31 +3,39 @@
 //Libraries
 #include <Arduino.h>
 #include <Firebase_ESP_Client.h>
-#include "WiFi.h"
 #include "esp_camera.h"
 #include "soc/soc.h"           // Disable brownout problems
 #include "soc/rtc_cntl_reg.h"  // Disable brownout problems
 #include "driver/rtc_io.h"
 #include <LittleFS.h>
+#include <SoftwareSerial.h>
 //Tokens for RTDB connection
 #include "addons/TokenHelper.h"
 #include "addons/RTDBHelper.h"
 
+SoftwareSerial sim808(13, 15);  // RX, TX
 
+unsigned long loopTime = 0;
+unsigned long serialTime = 0;
+char GPSData[100] = {0};
+char GPSTemp[100];
+float latitude, longitude = 0.0;
+String msggelen;
+String msggiden;
 
 //Network credentials
-const char* ssid = "El Gato(2.4)";
+const char* ssid = "";
 const char* password = "";
 
 //Firebase project api key
 #define API_KEY ""
 
 //Authortized Email and password
-#define USER_EMAIL "mehmetbulut4063@outlook.com"
+#define USER_EMAIL ""
 #define USER_PASSWORD ""
 
 //Firebase storage bucket id
-#define STORAGE_BUCKET_ID "pet-tracker-e6c45.appspot.com"
+#define STORAGE_BUCKET_ID ""
 
 //Database url
 #define DATABASE_URL "https://pet-tracker-e6c45-default-rtdb.europe-west1.firebasedatabase.app/"
@@ -53,8 +61,9 @@ const char* password = "";
 #define HREF_GPIO_NUM 23
 #define PCLK_GPIO_NUM 22
 
-bool takeNewPhoto = true;
+bool takeNewPhoto = false;
 bool isFbReady = false;
+bool isPhotoUploaded = false;
 
 //Firebase data objects
 FirebaseData fbdo;
@@ -170,9 +179,75 @@ void initCamera() {
 }
 
 
+void setsim808() {
+  Serial.println("at komutlar manuel gonderildi");
+  delay(10);
+
+  sim808.print("AT+CGPSPWR=1\r\n");
+  delay(200);  // gps on
+  sim808.print("AT+CGNSSEQ=RMC\r\n");
+  delay(200);  // gps on
+  //sim808.print("AT+CGPSRST=0\r\n");             delay(yuz); // cold restart
+
+  sim808.print("AT+CMGF=1\r\n");
+  delay(200);  // set SMS mode to text
+  sim808.print("AT+CNMi=2,2,0,0,0\r\n");
+  delay(200);  //Gelen mesajı okuma
+  sim808.print("AT+CLIP=1\r\n");
+  delay(200);
+  sim808.print("AT+DDET=1\r\n");
+  delay(200);  //dtmf
+  sim808.print("AT+CNUM\r\n");
+  delay(200);
+  sim808.print("AT+CLCC=1\r\n");
+  delay(200);  //caller info
+  sim808.print("ATS0=1\r\n");
+  delay(200);  //ring counter // 2 aramadan sonra cevap verilecek
+  //sim808.print("AT+CMGDA=DEL ALL\r\n");         delay(yuz); // dELETE ALL sMS
+  sim808.print("AT&W\r\n");
+  delay(700);  // STORE active profile
+}
+
+void rdGPS() {
+  sim808.print("AT+CGNSINF\r\n");
+  serialTime = loopTime;
+  delay(100);
+  while ((loopTime - serialTime) < 200) {
+    int index = 0;
+    loopTime = millis();
+    while (sim808.available()) {
+      delay(10);
+      loopTime = millis();
+      serialTime = loopTime;
+      char c = sim808.read();  //gets one byte from serial buffer
+      GPSData[index++] = c;    //makes the string readString
+    }
+  }
+  sim808.flush();
+  delay(700);
+    strcpy(GPSTemp, GPSData);
+   char *tmp1 = NULL;
+   tmp1 = strtok(GPSTemp, ",");
+  tmp1 = strtok(NULL, ",");
+  tmp1 = strtok(NULL, ",");
+  tmp1 = strtok(NULL, ",");
+  latitude = atof(tmp1);
+  tmp1 = strtok(NULL, ",");
+  longitude = atof(tmp1);
+}
+
+
+
+
 void setup() {
   // Serial port for debugging purposes
-  Serial.begin(115200);
+   Serial.begin(9600);
+  delay(1);
+  sim808.begin(9600);
+  delay(1);
+  //Set the sim808 by sending AT Commands
+  setsim808();  //Only for First run. After that please comment this.
+
   initWiFi();
   initLittleFS();
   // Turn-off the 'brownout detector'
@@ -200,45 +275,74 @@ void setup() {
     Serial.println("Firebase ready!");
 }
 void loop() {
+  loopTime = millis();
+  delay(100);
+  readsimPort();
+  delay(100);
+  readSerialPort();
+  delay(100);
+  if (msggiden != "") {
+    Serial.print("bizden giden : ");
+    Serial.println(msggiden);
+    sim808.print(msggiden);
+    msggiden = "";
+  }
+  if (msggelen != "") {
+    Serial.println("sim808 GELEN:  ");
+    Serial.println(msggelen);
+    msggelen = "";
+  }
+  rdGPS();
+  delay(1000);
+  Serial.printf("latitude: %f\n", latitude);
+  Serial.printf("longitude: %f\n", longitude);
+  
+  
   if (takeNewPhoto) {
     capturePhotoSaveLittleFS();
     takeNewPhoto = false;
+    isPhotoUploaded = false;
+
+  //Sending takeNewPhoto as false to the RTDB
+  if (Firebase.ready()) {
+    sendDataPrevMillis = millis();
+
+    if (Firebase.RTDB.setInt(&fbdo, "test/bool", takeNewPhoto)) {
+      Serial.println("Writing Successful!");
+      Serial.println("Path: " + fbdo.dataPath());
+      Serial.println("Data type: " + fbdo.dataType());
+    } else {
+      Serial.println("ERROR: " + fbdo.errorReason());
+    }
+  }
+
+  
+
   }
   delay(1);
-  if (Firebase.ready() && !isFbReady) {
-    isFbReady = true;
+  if (Firebase.ready() && !isPhotoUploaded) {
     Serial.print("Uploading picture... ");
 
     //MIME type should be valid to avoid the download problem.
     //The file systems for flash and SD/SDMMC can be changed in FirebaseFS.h.
     if (Firebase.Storage.upload(&fbdo, STORAGE_BUCKET_ID /* Firebase Storage bucket id */, FILE_PHOTO_PATH /* path to local file */, mem_storage_type_flash /* memory storage type, mem_storage_type_flash and mem_storage_type_sd */, BUCKET_PHOTO /* path of remote file stored in the bucket */, "image/jpeg" /* mime type */, fcsUploadCallback)) {
       Serial.printf("\nDownload URL: %s\n", fbdo.downloadURL().c_str());
+      isPhotoUploaded = true;
     } else {
       Serial.println(fbdo.errorReason());
     }
   }
 
-  //Writing data to Firebase RTDB
-  if (Firebase.ready() && (millis() - sendDataPrevMillis > 15000 || sendDataPrevMillis == 0)) {
-    sendDataPrevMillis = millis();
-
-    if (Firebase.RTDB.setInt(&fbdo, "test/int", count)) {
-      Serial.println("Writing Successful!");
-      Serial.println("Path: " + fbdo.dataPath());
-      Serial.println("Data type: " + fbdo.dataType());
-    } else {
-      Serial.println("HATA");
-      Serial.println("HATA SEBEBİ: " + fbdo.errorReason());
-    }
-    count++;
-  }
+  
   //Database testing
   if (Firebase.ready() && (millis() - getDataPrevMillis > 16000 || getDataPrevMillis == 0)) {
     getDataPrevMillis = millis();
-    if (Firebase.RTDB.getInt(&fbdo, "/test/int")) {
-      if (fbdo.dataType() == "int") {  //Checking for received data if it is int
-        intValue = fbdo.intData();
-        Serial.println(intValue);
+    if (Firebase.RTDB.getInt(&fbdo, "/test/bool")) {
+      Serial.println("Reading");
+      if (fbdo.dataType() == "boolean") {
+        Serial.println("it is bool");  //Checking for received data if it is bool
+        takeNewPhoto = fbdo.boolData();
+        Serial.println(takeNewPhoto);
       }
     } else {
       Serial.println(fbdo.errorReason());
@@ -268,4 +372,57 @@ void fcsUploadCallback(FCS_UploadStatusInfo info) {
   } else if (info.status == firebase_fcs_upload_status_error) {
     Serial.printf("Upload failed, %s\n", info.errorMsg.c_str());
   }
+}
+
+void GPSToFirebase() {
+  //Sending GPS values to the RTDB
+  if (Firebase.ready()) {
+    sendDataPrevMillis = millis();
+
+    if (Firebase.RTDB.setFloat(&fbdo, "gps/latitude", latitude)) {
+      Serial.println("Writing Successful!");
+      Serial.println("Path: " + fbdo.dataPath());
+      Serial.println("Data type: " + fbdo.dataType());
+    } else {
+      Serial.println("ERROR: " + fbdo.errorReason());
+    }
+
+    if (Firebase.RTDB.setFloat(&fbdo, "gps/longitude", longitude)) {
+      Serial.println("Writing Successful!");
+      Serial.println("Path: " + fbdo.dataPath());
+      Serial.println("Data type: " + fbdo.dataType());
+    } else {
+      Serial.println("ERROR: " + fbdo.errorReason());
+    }
+    
+  }
+}
+
+
+void readsimPort() {
+  serialTime = loopTime;
+  delay(1);
+  while ((loopTime - serialTime) < 200) {
+    loopTime = millis();
+    while (sim808.available()) {
+      loopTime = millis();
+      serialTime = loopTime;
+      char c = sim808.read();  //gets one byte from serial buffer
+      msggelen += c;           //makes the string readString
+    }
+  }
+  sim808.flush();
+  delay(700);
+}
+
+void readSerialPort() {
+  while (Serial.available()) {
+    delay(10);
+    if (Serial.available() > 0) {
+      char d = Serial.read();  //gets one byte from serial buffer
+      msggiden += d;           //makes the string readString
+    }
+  }
+  Serial.flush();
+  delay(700);
 }
