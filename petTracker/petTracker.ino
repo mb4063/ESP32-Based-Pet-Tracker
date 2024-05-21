@@ -13,6 +13,9 @@
 //Tokens for RTDB connection
 #include "addons/TokenHelper.h"
 #include "addons/RTDBHelper.h"
+#include <math.h>
+#include <cmath> 
+
 
 SoftwareSerial sim808(13, 15);  // RX, TX
 
@@ -59,11 +62,11 @@ unsigned long loopTime = 0;
 unsigned long serialTime = 0;
 char GPSData[100] = {0};
 char GPSTemp[100];
-float latitude, longitude, fenceLatitude, fenceLongitude, fenceDistance = 0.0;
+double latitude, longitude, fenceLatitude, fenceLongitude, fenceRadius, realDistance = 0.0;
 bool isPetIN = false;
 String msgFrmSIM;
 String msgToSIM;
-
+#define earthRadiusM 6371000.0
 
 
 //Boolean variables for flow control
@@ -337,6 +340,13 @@ void loop() {
     getFromRTDB();
     
   }
+
+  realDistance = distanceEarth(latitude, longitude, fenceLatitude, fenceLongitude);
+  if(realDistance > fenceRadius) {
+    isPetIN = false;
+  } else {
+    isPetIN = true;
+  }
 }
 
 //The Firebase Storage upload callback function
@@ -364,11 +374,11 @@ void fcsUploadCallback(FCS_UploadStatusInfo info) {
 }
 
 void GPSToFirebase() {
-  //Sending GPS values to the RTDB
+  //Sending GPS values and isPetIn to the RTDB
   if (Firebase.ready()) {
     sendDataPrevMillis = millis();
 
-    if (Firebase.RTDB.setFloat(&fbdo, "gps/latitude", latitude)) {
+    if (Firebase.RTDB.setDouble(&fbdo, "gps/latitude", latitude)) {
       Serial.println("Writing Successful!");
       Serial.println("Path: " + fbdo.dataPath());
       Serial.println("Data type: " + fbdo.dataType());
@@ -376,7 +386,23 @@ void GPSToFirebase() {
       Serial.println("ERROR: " + fbdo.errorReason());
     }
 
-    if (Firebase.RTDB.setFloat(&fbdo, "gps/longitude", longitude)) {
+    if (Firebase.RTDB.setDouble(&fbdo, "gps/longitude", longitude)) {
+      Serial.println("Writing Successful!");
+      Serial.println("Path: " + fbdo.dataPath());
+      Serial.println("Data type: " + fbdo.dataType());
+    } else {
+      Serial.println("ERROR: " + fbdo.errorReason());
+    }
+
+    if (Firebase.RTDB.setDouble(&fbdo, "fence/realDistance", realDistance)) {
+      Serial.println("Writing Successful!");
+      Serial.println("Path: " + fbdo.dataPath());
+      Serial.println("Data type: " + fbdo.dataType());
+    } else {
+      Serial.println("ERROR: " + fbdo.errorReason());
+    }
+
+    if (Firebase.RTDB.setBool(&fbdo, "fence/isPetIn", isPetIN)) {
       Serial.println("Writing Successful!");
       Serial.println("Path: " + fbdo.dataPath());
       Serial.println("Data type: " + fbdo.dataType());
@@ -437,7 +463,8 @@ void takePhoto() {
 }
 
 void getFromRTDB() {
-  if (Firebase.RTDB.getInt(&fbdo, "/camera/bool")) {
+  if(Firebase.ready()) {
+    if (Firebase.RTDB.getInt(&fbdo, "/camera/bool")) {
       Serial.println("Reading");
       if (fbdo.dataType() == "boolean") {
         Serial.println("it is bool");  //Checking for received data if it is bool
@@ -450,31 +477,64 @@ void getFromRTDB() {
 
     if (Firebase.RTDB.getFloat(&fbdo, "/fence/latitude")) {
       Serial.println("Reading");
-      if (fbdo.dataType() == "float") { //Checking for received data if it is float
+      if (fbdo.dataType() == "float") { //Checking for received data if it is Double
         fenceLatitude = fbdo.floatData();
         Serial.println(fenceLatitude);
       }
     } else {
-      Serial.println(fbdo.errorReason());
+       Serial.println(fbdo.errorReason());
     }
 
     if (Firebase.RTDB.getFloat(&fbdo, "/fence/longitude")) {
       Serial.println("Reading");
-      if (fbdo.dataType() == "float") { //Checking for received data if it is float
+      if (fbdo.dataType() == "float") { //Checking for received data if it is Double
         fenceLongitude = fbdo.floatData();
         Serial.println(fenceLongitude);
       }
     } else {
-      Serial.println(fbdo.errorReason());
+        Serial.println(fbdo.errorReason());
     }
 
-    if (Firebase.RTDB.getFloat(&fbdo, "/fence/distance")) {
+    if (Firebase.RTDB.getDouble(&fbdo, "/fence/fenceRadius")) {
       Serial.println("Reading");
-      if (fbdo.dataType() == "float") { //Checking for received data if it is float
-        fenceDistance = fbdo.floatData();
-        Serial.println(fenceDistance);
+      if (fbdo.dataType() == "double") { //Checking for received data if it is Double
+        fenceRadius = fbdo.doubleData();
+        Serial.println(fenceRadius);
       }
     } else {
-      Serial.println(fbdo.errorReason());
+        Serial.println(fbdo.errorReason());
     }
+  }
+}
+
+//Haversine formula for calculating distance
+
+// This function converts decimal degrees to radians
+double deg2rad(double deg) {
+  return (deg * M_PI / 180);
+}
+
+//  This function converts radians to decimal degrees
+double rad2deg(double rad) {
+  return (rad * 180 / M_PI);
+}
+
+/**
+ * Returns the distance between two points on the Earth.
+ * Direct translation from http://en.wikipedia.org/wiki/Haversine_formula
+ * @param lat1d Latitude of the first point in degrees
+ * @param lon1d Longitude of the first point in degrees
+ * @param lat2d Latitude of the second point in degrees
+ * @param lon2d Longitude of the second point in degrees
+ * @return The distance between the two points in kilometers
+ */
+double distanceEarth(double lat1d, double lon1d, double lat2d, double lon2d) {
+  double lat1r, lon1r, lat2r, lon2r, u, v;
+  lat1r = deg2rad(lat1d);
+  lon1r = deg2rad(lon1d);
+  lat2r = deg2rad(lat2d);
+  lon2r = deg2rad(lon2d);
+  u = sin((lat2r - lat1r)/2);
+  v = sin((lon2r - lon1r)/2);
+  return 2.0 * earthRadiusM * asin(sqrt(u * u + cos(lat1r) * cos(lat2r) * v * v));
 }
