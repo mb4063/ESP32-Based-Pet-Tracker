@@ -15,6 +15,7 @@
 #include "addons/RTDBHelper.h"
 #include <math.h>
 #include <cmath> 
+using namespace std;
 
 
 SoftwareSerial sim808(13, 15);  // RX, TX
@@ -63,10 +64,10 @@ unsigned long serialTime = 0;
 char GPSData[100] = {0};
 char GPSTemp[100];
 double latitude, longitude, fenceLatitude, fenceLongitude, fenceRadius, realDistance = 0.0;
-bool isPetIN = false;
+bool isPetIn = false;
 String msgFrmSIM;
 String msgToSIM;
-#define earthRadiusM 6371000.0
+#define earthRadiusKm 6371.0
 
 
 //Boolean variables for flow control
@@ -341,11 +342,18 @@ void loop() {
     
   }
 
-  realDistance = distanceEarth(latitude, longitude, fenceLatitude, fenceLongitude);
+  //Getting distance to the geofence in meters
+  realDistance = haversine(fenceLatitude, fenceLongitude,latitude ,longitude );
+  Serial.print("real");
+  Serial.println(realDistance);
+  Serial.print("fence");
+  Serial.println(fenceRadius);
   if(realDistance > fenceRadius) {
-    isPetIN = false;
+    isPetIn = false;
+    Serial.println("real");
   } else {
-    isPetIN = true;
+    isPetIn = true;
+    Serial.println("fence");
   }
 }
 
@@ -394,7 +402,7 @@ void GPSToFirebase() {
       Serial.println("ERROR: " + fbdo.errorReason());
     }
 
-    if (Firebase.RTDB.setDouble(&fbdo, "fence/realDistance", realDistance)) {
+    if (Firebase.RTDB.setFloat(&fbdo, "fence/realDistance", realDistance)) {
       Serial.println("Writing Successful!");
       Serial.println("Path: " + fbdo.dataPath());
       Serial.println("Data type: " + fbdo.dataType());
@@ -402,7 +410,7 @@ void GPSToFirebase() {
       Serial.println("ERROR: " + fbdo.errorReason());
     }
 
-    if (Firebase.RTDB.setBool(&fbdo, "fence/isPetIn", isPetIN)) {
+    if (Firebase.RTDB.setBool(&fbdo, "fence/isPetIn", isPetIn)) {
       Serial.println("Writing Successful!");
       Serial.println("Path: " + fbdo.dataPath());
       Serial.println("Data type: " + fbdo.dataType());
@@ -475,15 +483,16 @@ void getFromRTDB() {
       Serial.println(fbdo.errorReason());
     }
 
-    if (Firebase.RTDB.getFloat(&fbdo, "/fence/latitude")) {
+    if (Firebase.RTDB.getDouble(&fbdo, "/fence/latitude")) {
       Serial.println("Reading");
-      if (fbdo.dataType() == "float") { //Checking for received data if it is Double
-        fenceLatitude = fbdo.floatData();
+      if (fbdo.dataType() == "double") { //Checking for received data if it is Double
+        fenceLatitude = fbdo.doubleData();
         Serial.println(fenceLatitude);
       }
     } else {
        Serial.println(fbdo.errorReason());
     }
+    delay(1);
 
     if (Firebase.RTDB.getFloat(&fbdo, "/fence/longitude")) {
       Serial.println("Reading");
@@ -495,10 +504,10 @@ void getFromRTDB() {
         Serial.println(fbdo.errorReason());
     }
 
-    if (Firebase.RTDB.getDouble(&fbdo, "/fence/fenceRadius")) {
+    if (Firebase.RTDB.getInt(&fbdo, "/fence/fenceRadius")) {
       Serial.println("Reading");
-      if (fbdo.dataType() == "double") { //Checking for received data if it is Double
-        fenceRadius = fbdo.doubleData();
+      if (fbdo.dataType() == "int") { //Checking for received data if it is Double
+        fenceRadius = 1.0 * fbdo.intData();
         Serial.println(fenceRadius);
       }
     } else {
@@ -507,34 +516,26 @@ void getFromRTDB() {
   }
 }
 
-//Haversine formula for calculating distance
-
-// This function converts decimal degrees to radians
-double deg2rad(double deg) {
-  return (deg * M_PI / 180);
-}
-
-//  This function converts radians to decimal degrees
-double rad2deg(double rad) {
-  return (rad * 180 / M_PI);
-}
-
-/**
- * Returns the distance between two points on the Earth.
- * Direct translation from http://en.wikipedia.org/wiki/Haversine_formula
- * @param lat1d Latitude of the first point in degrees
- * @param lon1d Longitude of the first point in degrees
- * @param lat2d Latitude of the second point in degrees
- * @param lon2d Longitude of the second point in degrees
- * @return The distance between the two points in kilometers
- */
-double distanceEarth(double lat1d, double lon1d, double lat2d, double lon2d) {
-  double lat1r, lon1r, lat2r, lon2r, u, v;
-  lat1r = deg2rad(lat1d);
-  lon1r = deg2rad(lon1d);
-  lat2r = deg2rad(lat2d);
-  lon2r = deg2rad(lon2d);
-  u = sin((lat2r - lat1r)/2);
-  v = sin((lon2r - lon1r)/2);
-  return 2.0 * earthRadiusM * asin(sqrt(u * u + cos(lat1r) * cos(lat2r) * v * v));
-}
+//Haversine formula for calculating distance in KM
+static double haversine(double lat1, double lon1,
+                        double lat2, double lon2)
+    {
+        // distance between latitudes
+        // and longitudes
+        double dLat = (lat2 - lat1) *
+                      (M_PI / 180.0);
+        double dLon = (lon2 - lon1) * 
+                      M_PI / 180.0;
+ 
+        // convert to radians
+        lat1 = (lat1) * (M_PI / 180.0);
+        lat2 = (lat2) * (M_PI / 180.0);
+ 
+        // apply formulae
+        double a = pow(sin(dLat / 2), 2) + 
+                   pow(sin(dLon / 2), 2) * 
+                   cos(lat1) * cos(lat2);
+        double rad = 6371;
+        double c = 2 * asin(sqrt(a));
+        return rad * c;
+    }
