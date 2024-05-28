@@ -1,4 +1,4 @@
-
+//@author: Mehmet BULUT
 
 //Libraries
 #include <Arduino.h>
@@ -84,60 +84,6 @@ unsigned long getDataPrevMillis = 0;
 int intValue = 0;
 int count = 1;
 
-void fcsUploadCallback(FCS_UploadStatusInfo info);
-
-//Capture Photo and Save it to LittleFS
-void capturePhotoSaveLittleFS(void) {
-  camera_fb_t* fb = NULL;
-  // Skip first 3 frames
-  for (int i = 0; i < 4; i++) {
-    fb = esp_camera_fb_get();
-    esp_camera_fb_return(fb);
-    fb = NULL;
-  }
-
-  //Take a new photo
-  fb = NULL;
-  fb = esp_camera_fb_get();
-  if (!fb) {
-    Serial.println("Camera capture failed");
-    delay(1000);
-    ESP.restart();
-  }
-
-  //Photo file name
-  Serial.printf("Picture file name: %s\n", FILE_PHOTO_PATH);
-  File file = LittleFS.open(FILE_PHOTO_PATH, FILE_WRITE);
-
-  //Insert the data in the photo file
-  if (!file) {
-    Serial.println("Failed to open file in writing mode");
-  } else {
-    file.write(fb->buf, fb->len);  // payload (image), payload length
-    Serial.print("The picture has been saved in ");
-    Serial.print(FILE_PHOTO_PATH);
-    Serial.print(" - Size: ");
-    Serial.print(fb->len);
-    Serial.println(" bytes");
-  }
-  //Close the file
-  file.close();
-  esp_camera_fb_return(fb);
-}
-
-//LittleFS file system for saving photo
-void initLittleFS() {
-  if (!LittleFS.begin(true)) {
-    Serial.println("An Error has occurred while mounting LittleFS");
-    ESP.restart();
-  } else {
-    delay(500);
-    Serial.println("LittleFS mounted successfully");
-  }
-}
-
-
-
 void initWiFi() {
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
@@ -188,6 +134,57 @@ void initCamera() {
   }
 }
 
+//LittleFS file system for saving photo
+void initLittleFS() {
+  if (!LittleFS.begin(true)) {
+    Serial.println("An Error has occurred while mounting LittleFS");
+    ESP.restart();
+  } else {
+    delay(500);
+    Serial.println("LittleFS mounted successfully");
+  }
+}
+
+//Capture Photo and Save it to LittleFS
+void capturePhotoSaveLittleFS(void) {
+  camera_fb_t* fb = NULL;
+  // Skip first 3 frames
+  for (int i = 0; i < 4; i++) {
+    fb = esp_camera_fb_get();
+    esp_camera_fb_return(fb);
+    fb = NULL;
+  }
+
+  //Take a new photo
+  fb = NULL;
+  fb = esp_camera_fb_get();
+  if (!fb) {
+    Serial.println("Camera capture failed");
+    delay(1000);
+    ESP.restart();
+  }
+
+  //Photo file name
+  Serial.printf("Picture file name: %s\n", FILE_PHOTO_PATH);
+  File file = LittleFS.open(FILE_PHOTO_PATH, FILE_WRITE);
+
+  //Insert the data in the photo file
+  if (!file) {
+    Serial.println("Failed to open file in writing mode");
+  } else {
+    file.write(fb->buf, fb->len);  // payload (image), payload length
+    Serial.print("The picture has been saved in ");
+    Serial.print(FILE_PHOTO_PATH);
+    Serial.print(" - Size: ");
+    Serial.print(fb->len);
+    Serial.println(" bytes");
+  }
+  //Close the file
+  file.close();
+  esp_camera_fb_return(fb);
+}
+
+
 
 void setsim808() {
   Serial.println("at komutlar manuel gonderildi");
@@ -197,228 +194,10 @@ void setsim808() {
   delay(200);  // gps on
   sim808.print("AT+CGNSSEQ=RMC\r\n");
   delay(200);  // gps on
-  //sim808.print("AT+CGPSRST=0\r\n");             delay(yuz); // cold restart
+  //sim808.print("AT+CGPSRST=0\r\n");             delay(100); // cold restart
 
-  sim808.print("AT+CMGF=1\r\n");
-  delay(200);  // set SMS mode to text
-  sim808.print("AT+CNMi=2,2,0,0,0\r\n");
-  delay(200);  //Gelen mesajı okuma
-  sim808.print("AT+CLIP=1\r\n");
-  delay(200);
-  sim808.print("AT+DDET=1\r\n");
-  delay(200);  //dtmf
-  sim808.print("AT+CNUM\r\n");
-  delay(200);
-  sim808.print("AT+CLCC=1\r\n");
-  delay(200);  //caller info
-  sim808.print("ATS0=1\r\n");
-  delay(200);  //ring counter // 2 aramadan sonra cevap verilecek
-  //sim808.print("AT+CMGDA=DEL ALL\r\n");         delay(yuz); // dELETE ALL sMS
   sim808.print("AT&W\r\n");
   delay(700);  // STORE active profile
-}
-
-//Reading GPS from SIM808 module
-void rdGPS() {
-  sim808.print("AT+CGNSINF\r\n");
-  serialTime = loopTime;
-  delay(100);
-  while ((loopTime - serialTime) < 200) {
-    int index = 0;
-    loopTime = millis();
-    while (sim808.available()) {
-      delay(10);
-      loopTime = millis();
-      serialTime = loopTime;
-      char c = sim808.read();  //gets one byte from serial buffer
-      GPSData[index++] = c;    //makes the string readString
-    }
-  }
-  sim808.flush();
-  delay(700);
-    strcpy(GPSTemp, GPSData);
-   char *tmp1 = NULL;
-   tmp1 = strtok(GPSTemp, ",");
-  tmp1 = strtok(NULL, ",");
-  tmp1 = strtok(NULL, ",");
-  tmp1 = strtok(NULL, ",");
-  latitude = atof(tmp1);
-  tmp1 = strtok(NULL, ",");
-  longitude = atof(tmp1);
-
-  //Sending data to the Firebase RTDB
-  GPSToFirebase();
-}
-
-
-
-
-void setup() {
-  // Serial port for debugging purposes
-   Serial.begin(9600);
-  delay(1);
-  sim808.begin(9600);
-  delay(1);
-  //Set the sim808 by sending AT Commands
-  setsim808();  //Only for First run. After that please comment this.
-
-  initWiFi();
-  initLittleFS();
-  // Turn-off the 'brownout detector'
-  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
-  initCamera();
-  Serial.println();
-  Serial.print("Connect. IP Adress: ");
-  Serial.println(WiFi.localIP());
-  Serial.println();
-
-  //Firebase
-  //Assign the api key
-  configF.api_key = API_KEY;
-  //Assign the user sign in credentials
-  auth.user.email = USER_EMAIL;
-  auth.user.password = USER_PASSWORD;
-  configF.database_url = DATABASE_URL;
-
-
-  //Assign the callback function for the long running token generation task
-  configF.token_status_callback = tokenStatusCallback;  //see addons/TokenHelper.h
-  Firebase.begin(&configF, &auth);
-  Firebase.reconnectWiFi(true);
-  if (Firebase.ready())
-    Serial.println("Firebase ready!");
-}
-void loop() {
-  loopTime = millis();
-  delay(100);
-  readsimPort();
-  delay(100);
-  readSerialPort();
-  delay(100);
-  if (msgToSIM != "") {
-    Serial.print("bizden giden : ");
-    Serial.println(msgToSIM);
-    sim808.print(msgToSIM);
-    msgToSIM = "";
-  }
-  if (msgFrmSIM != "") {
-    Serial.println("sim808 GELEN:  ");
-    Serial.println(msgFrmSIM);
-    msgFrmSIM = "";
-  }
-  
-  
-  
-  if (takeNewPhoto) {
-    takePhoto();
-  }
-  delay(1);
-  if (Firebase.ready() && !isPhotoUploaded) {
-    Serial.print("Uploading picture... ");
-
-    //MIME type should be valid to avoid the download problem.
-    //The file systems for flash and SD/SDMMC can be changed in FirebaseFS.h.
-    if (Firebase.Storage.upload(&fbdo, STORAGE_BUCKET_ID /* Firebase Storage bucket id */, FILE_PHOTO_PATH /* path to local file */, mem_storage_type_flash /* memory storage type, mem_storage_type_flash and mem_storage_type_sd */, BUCKET_PHOTO /* path of remote file stored in the bucket */, "image/jpeg" /* mime type */, fcsUploadCallback)) {
-      Serial.printf("\nDownload URL: %s\n", fbdo.downloadURL().c_str());
-      isPhotoUploaded = true;
-    } else {
-      Serial.println(fbdo.errorReason());
-    }
-  }
-
-  
-  //20 second interval for getting GPS data from module and other values from RTDB
-  if (Firebase.ready() && (millis() - getDataPrevMillis > 20000 || getDataPrevMillis == 0)) {
-    getDataPrevMillis = millis();
-
-    //Getting GPS and sending it to the RTDB
-    rdGPS();
-    delay(1000);
-    Serial.printf("latitude: %f\n", latitude);
-    Serial.printf("longitude: %f\n", longitude);
-    
-    //Getting values from database
-    getFromRTDB();
-    
-  }
-
-  //Getting distance to the geofence in meters
-  realDistance = haversine(fenceLatitude, fenceLongitude,latitude ,longitude );
-  Serial.print("real");
-  Serial.println(realDistance);
-  Serial.print("fence");
-  Serial.println(fenceRadius);
-  if(realDistance > fenceRadius) {
-    isPetIn = false;
-    Serial.println("real");
-  } else {
-    isPetIn = true;
-    Serial.println("fence");
-  }
-}
-
-//The Firebase Storage upload callback function
-void fcsUploadCallback(FCS_UploadStatusInfo info) {
-  if (info.status == firebase_fcs_upload_status_init) {
-    Serial.printf("Uploading file %s (%d) to %s\n", info.localFileName.c_str(), info.fileSize, info.remoteFileName.c_str());
-  } else if (info.status == firebase_fcs_upload_status_upload) {
-    Serial.printf("Uploaded %d%s, Elapsed time %d ms\n", (int)info.progress, "%", info.elapsedTime);
-  } else if (info.status == firebase_fcs_upload_status_complete) {
-    Serial.println("Upload completed\n");
-    FileMetaInfo meta = fbdo.metaData();
-    Serial.printf("Name: %s\n", meta.name.c_str());
-    Serial.printf("Bucket: %s\n", meta.bucket.c_str());
-    Serial.printf("contentType: %s\n", meta.contentType.c_str());
-    Serial.printf("Size: %d\n", meta.size);
-    Serial.printf("Generation: %lu\n", meta.generation);
-    Serial.printf("Metageneration: %lu\n", meta.metageneration);
-    Serial.printf("ETag: %s\n", meta.etag.c_str());
-    Serial.printf("CRC32: %s\n", meta.crc32.c_str());
-    Serial.printf("Tokens: %s\n", meta.downloadTokens.c_str());
-    Serial.printf("Download URL: %s\n\n", fbdo.downloadURL().c_str());
-  } else if (info.status == firebase_fcs_upload_status_error) {
-    Serial.printf("Upload failed, %s\n", info.errorMsg.c_str());
-  }
-}
-
-void GPSToFirebase() {
-  //Sending GPS values and isPetIn to the RTDB
-  if (Firebase.ready()) {
-    sendDataPrevMillis = millis();
-
-    if (Firebase.RTDB.setDouble(&fbdo, "gps/latitude", latitude)) {
-      Serial.println("Writing Successful!");
-      Serial.println("Path: " + fbdo.dataPath());
-      Serial.println("Data type: " + fbdo.dataType());
-    } else {
-      Serial.println("ERROR: " + fbdo.errorReason());
-    }
-
-    if (Firebase.RTDB.setDouble(&fbdo, "gps/longitude", longitude)) {
-      Serial.println("Writing Successful!");
-      Serial.println("Path: " + fbdo.dataPath());
-      Serial.println("Data type: " + fbdo.dataType());
-    } else {
-      Serial.println("ERROR: " + fbdo.errorReason());
-    }
-
-    if (Firebase.RTDB.setFloat(&fbdo, "fence/realDistance", realDistance)) {
-      Serial.println("Writing Successful!");
-      Serial.println("Path: " + fbdo.dataPath());
-      Serial.println("Data type: " + fbdo.dataType());
-    } else {
-      Serial.println("ERROR: " + fbdo.errorReason());
-    }
-
-    if (Firebase.RTDB.setBool(&fbdo, "fence/isPetIn", isPetIn)) {
-      Serial.println("Writing Successful!");
-      Serial.println("Path: " + fbdo.dataPath());
-      Serial.println("Data type: " + fbdo.dataType());
-    } else {
-      Serial.println("ERROR: " + fbdo.errorReason());
-    }
-    
-  }
 }
 
 //Reads messages from SIM
@@ -450,6 +229,39 @@ void readSerialPort() {
   delay(700);
 }
 
+
+//Reading GPS from SIM808 module
+void rdGPS() {
+  sim808.print("AT+CGNSINF\r\n");
+  serialTime = loopTime;
+  delay(100);
+  while ((loopTime - serialTime) < 200) {
+    int index = 0;
+    loopTime = millis();
+    while (sim808.available()) {
+      delay(10);
+      loopTime = millis();
+      serialTime = loopTime;
+      char c = sim808.read();  //Gets one byte from serial buffer
+      GPSData[index++] = c;    //Makes the string 
+    }
+  }
+  sim808.flush();
+  delay(700);
+    strcpy(GPSTemp, GPSData);
+   char *tmp1 = NULL;
+   tmp1 = strtok(GPSTemp, ",");
+  tmp1 = strtok(NULL, ",");
+  tmp1 = strtok(NULL, ",");
+  tmp1 = strtok(NULL, ",");
+  latitude = atof(tmp1);
+  tmp1 = strtok(NULL, ",");
+  longitude = atof(tmp1);
+
+  //Sending data to the Firebase RTDB
+  GPSToFirebase();
+}
+
 //Captures a new photo
 void takePhoto() {
   capturePhotoSaveLittleFS();
@@ -470,6 +282,7 @@ void takePhoto() {
   }
 }
 
+//Getting values from Firebase
 void getFromRTDB() {
   if(Firebase.ready()) {
     if (Firebase.RTDB.getInt(&fbdo, "/camera/bool")) {
@@ -516,6 +329,71 @@ void getFromRTDB() {
   }
 }
 
+//The Firebase Storage upload callback function
+void fcsUploadCallback(FCS_UploadStatusInfo info) {
+  if (info.status == firebase_fcs_upload_status_init) {
+    Serial.printf("Uploading file %s (%d) to %s\n", info.localFileName.c_str(), info.fileSize, info.remoteFileName.c_str());
+  } else if (info.status == firebase_fcs_upload_status_upload) {
+    Serial.printf("Uploaded %d%s, Elapsed time %d ms\n", (int)info.progress, "%", info.elapsedTime);
+  } else if (info.status == firebase_fcs_upload_status_complete) {
+    Serial.println("Upload completed\n");
+    FileMetaInfo meta = fbdo.metaData();
+    Serial.printf("Name: %s\n", meta.name.c_str());
+    Serial.printf("Bucket: %s\n", meta.bucket.c_str());
+    Serial.printf("contentType: %s\n", meta.contentType.c_str());
+    Serial.printf("Size: %d\n", meta.size);
+    Serial.printf("Generation: %lu\n", meta.generation);
+    Serial.printf("Metageneration: %lu\n", meta.metageneration);
+    Serial.printf("ETag: %s\n", meta.etag.c_str());
+    Serial.printf("CRC32: %s\n", meta.crc32.c_str());
+    Serial.printf("Tokens: %s\n", meta.downloadTokens.c_str());
+    Serial.printf("Download URL: %s\n\n", fbdo.downloadURL().c_str());
+  } else if (info.status == firebase_fcs_upload_status_error) {
+    Serial.printf("Upload failed, %s\n", info.errorMsg.c_str());
+  }
+}
+
+//Sending GPS values and isPetIn to the RTDB
+void GPSToFirebase() {
+
+  if (Firebase.ready()) {
+    sendDataPrevMillis = millis();
+
+    if (Firebase.RTDB.setDouble(&fbdo, "gps/latitude", latitude)) {
+      Serial.println("Writing Successful!");
+      Serial.println("Path: " + fbdo.dataPath());
+      Serial.println("Data type: " + fbdo.dataType());
+    } else {
+      Serial.println("ERROR: " + fbdo.errorReason());
+    }
+
+    if (Firebase.RTDB.setDouble(&fbdo, "gps/longitude", longitude)) {
+      Serial.println("Writing Successful!");
+      Serial.println("Path: " + fbdo.dataPath());
+      Serial.println("Data type: " + fbdo.dataType());
+    } else {
+      Serial.println("ERROR: " + fbdo.errorReason());
+    }
+
+    if (Firebase.RTDB.setFloat(&fbdo, "fence/realDistance", realDistance)) {
+      Serial.println("Writing Successful!");
+      Serial.println("Path: " + fbdo.dataPath());
+      Serial.println("Data type: " + fbdo.dataType());
+    } else {
+      Serial.println("ERROR: " + fbdo.errorReason());
+    }
+
+    if (Firebase.RTDB.setBool(&fbdo, "fence/isPetIn", isPetIn)) {
+      Serial.println("Writing Successful!");
+      Serial.println("Path: " + fbdo.dataPath());
+      Serial.println("Data type: " + fbdo.dataType());
+    } else {
+      Serial.println("ERROR: " + fbdo.errorReason());
+    }
+    
+  }
+}
+
 //Haversine formula for calculating distance in KM
 static double haversine(double lat1, double lon1,
                         double lat2, double lon2)
@@ -539,3 +417,102 @@ static double haversine(double lat1, double lon1,
         double c = 2 * asin(sqrt(a));
         return rad * c;
     }
+
+    
+void setup() {
+  // Serial port for debugging purposes
+   Serial.begin(9600);
+  delay(1);
+  sim808.begin(9600);
+  delay(1);
+  //Set the sim808 by sending AT Commands
+  setsim808();  //Only for First run. After that please comment this.
+
+  initWiFi();
+  initLittleFS();
+  // Turn-off the 'brownout detector'
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+  initCamera();
+  Serial.println();
+  Serial.print("Connect. IP Adress: ");
+  Serial.println(WiFi.localIP());
+  Serial.println();
+
+  //Firebase
+  //Assign the api key
+  configF.api_key = API_KEY;
+  //Assign the user sign in credentials
+  auth.user.email = USER_EMAIL;
+  auth.user.password = USER_PASSWORD;
+  configF.database_url = DATABASE_URL;
+
+
+  //Assign the callback function for the long running token generation task
+  configF.token_status_callback = tokenStatusCallback;  //see addons/TokenHelper.h
+  Firebase.begin(&configF, &auth);
+  Firebase.reconnectWiFi(true);
+  if (Firebase.ready())
+    Serial.println("Firebase ready!");
+}
+
+void loop() {
+  loopTime = millis();
+  delay(100);
+  readsimPort();
+  delay(100);
+  readSerialPort();
+  delay(100);
+  if (msgToSIM != "") {
+    Serial.print("Serial port : ");
+    Serial.println(msgToSIM);
+    sim808.print(msgToSIM);
+    msgToSIM = "";
+  }
+  if (msgFrmSIM != "") {
+    Serial.println("sim808 respond:  ");
+    Serial.println(msgFrmSIM);
+    msgFrmSIM = "";
+  }
+
+  //20 second interval for getting GPS data from module and other values from RTDB
+  if (Firebase.ready() && (millis() - getDataPrevMillis > 20000 || getDataPrevMillis == 0)) {
+    getDataPrevMillis = millis();
+
+    //Getting GPS and sending it to the RTDB
+    rdGPS();
+    delay(1000);
+    Serial.printf("latitude: %f\n", latitude);
+    Serial.printf("longitude: %f\n", longitude);
+    
+    //Getting values from database
+    getFromRTDB();
+    
+  }
+  
+  if (takeNewPhoto) {
+    takePhoto();
+  }
+  delay(1);
+  if (Firebase.ready() && !isPhotoUploaded) {
+    Serial.print("Uploading picture... ");
+
+    //MIME type should be valid to avoid the download problem.
+    //The file systems for flash and SD/SDMMC can be changed in FirebaseFS.h.
+    if (Firebase.Storage.upload(&fbdo, STORAGE_BUCKET_ID /* Firebase Storage bucket id */, FILE_PHOTO_PATH /* path to local file */, mem_storage_type_flash /* memory storage type, mem_storage_type_flash and mem_storage_type_sd */, BUCKET_PHOTO /* path of remote file stored in the bucket */, "image/jpeg" /* mime type */, fcsUploadCallback)) {
+      Serial.printf("\nDownload URL: %s\n", fbdo.downloadURL().c_str());
+      isPhotoUploaded = true;
+    } else {
+      Serial.println(fbdo.errorReason());
+    }
+  }
+
+  //Getting distance to the geofence in meters
+  realDistance = haversine(fenceLatitude, fenceLongitude,latitude ,longitude );
+  if(realDistance > fenceRadius) {
+    isPetIn = false;
+    Serial.println("real");
+  } else {
+    isPetIn = true;
+    Serial.println("fence");
+  }
+}
