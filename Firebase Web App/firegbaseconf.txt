@@ -1,0 +1,22 @@
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyBnCUu2cwIEjMsm4rVrW5bAm0Seur05bJo",
+  authDomain: "pet-tracker-e6c45.firebaseapp.com",
+  databaseURL: "https://pet-tracker-e6c45-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "pet-tracker-e6c45",
+  storageBucket: "pet-tracker-e6c45.appspot.com",
+  messagingSenderId: "279825651669",
+  appId: "1:279825651669:web:37b91896ac214102434f5c",
+  measurementId: "G-8660S9876X"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
