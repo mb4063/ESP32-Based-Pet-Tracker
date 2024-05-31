@@ -21,21 +21,21 @@ using namespace std;
 SoftwareSerial sim808(13, 15);  // RX, TX
 
 //Network credentials
-const char* ssid = "";
-const char* password = "";
+const char* ssid = "El Gato(2.4)";
+const char* password = "meowmeownigga";
 
 //Firebase project api key
-#define API_KEY ""
+#define API_KEY "AIzaSyBnCUu2cwIEjMsm4rVrW5bAm0Seur05bJo"
 
 //Authortized Email and password
-#define USER_EMAIL ""
-#define USER_PASSWORD ""
+#define USER_EMAIL "mehmetbulut4063@gmail.com"
+#define USER_PASSWORD "Deneme123"
 
 //Firebase storage bucket id
-#define STORAGE_BUCKET_ID ""
+#define STORAGE_BUCKET_ID "pet-tracker-e6c45.appspot.com"
 
 //Database url
-#define DATABASE_URL ""
+#define DATABASE_URL "pet-tracker-e6c45-default-rtdb.europe-west1.firebasedatabase.app"
 //Data path for photo
 #define FILE_PHOTO_PATH "/photo.jpg"
 #define BUCKET_PHOTO "/data/photo.jpg"
@@ -231,7 +231,7 @@ void readSerialPort() {
 
 
 //Reading GPS from SIM808 module
-void rdGPS() {
+void  rdGPS() {
   sim808.print("AT+CGNSINF\r\n");
   serialTime = loopTime;
   delay(100);
@@ -488,6 +488,16 @@ void loop() {
     getFromRTDB();
     
   }
+
+   //Calculating the distance to the geofence in meters
+  realDistance = haversine(fenceLatitude, fenceLongitude,latitude ,longitude );
+  if(realDistance > fenceRadius) {
+    isPetIn = false;
+    Serial.println("real");
+  } else {
+    isPetIn = true;
+    Serial.println("fence");
+  }
   
   if (takeNewPhoto) {
     takePhoto();
@@ -506,13 +516,5 @@ void loop() {
     }
   }
 
-  //Getting distance to the geofence in meters
-  realDistance = haversine(fenceLatitude, fenceLongitude,latitude ,longitude );
-  if(realDistance > fenceRadius) {
-    isPetIn = false;
-    Serial.println("real");
-  } else {
-    isPetIn = true;
-    Serial.println("fence");
-  }
+ 
 }

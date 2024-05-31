@@ -5,9 +5,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ESP Firebase App</title>
+  <title>ESP32-CAM Pet Tracker</title>
   <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.7.2/css/all.css" integrity="sha384-fnmOCqbTlWIlj8LyTjo7mOUStjsKC4pOpQbqyi7RrhN7udi9RwhKkMHpvLbHG9Sr" crossorigin="anonymous">
   <link rel="stylesheet" type="text/css" href="style.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+  crossorigin=""/>
   <!-- The core Firebase JS SDK is always required and must be listed first -->
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 
@@ -16,20 +19,24 @@
   <script src="https://www.gstatic.com/firebasejs/8.8.1/firebase-database.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.8.1/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
-  <script async
-  src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBnCUu2cwIEjMsm4rVrW5bAm0Seur05bJo"></script>
+
+ <!-- Make sure you put this AFTER Leaflet's CSS -->
+ <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+     crossorigin=""></script>
 
   <script>
+    
     // REPLACE WITH YOUR web app's Firebase configuration
     var firebaseConfig = {
       apiKey: "AIzaSyBnCUu2cwIEjMsm4rVrW5bAm0Seur05bJo",
-      authDomain: "pet-tracker-e6c45.firebaseapp.com",
-      databaseURL: "https://pet-tracker-e6c45-default-rtdb.europe-west1.firebasedatabase.app",
-      projectId: "pet-tracker-e6c45",
-      storageBucket: "pet-tracker-e6c45.appspot.com",
-      messagingSenderId: "279825651669",
-      appId: "1:279825651669:web:37b91896ac214102434f5c",
-      measurementId: "G-8660S9876X"
+  authDomain: "pet-tracker-e6c45.firebaseapp.com",
+  databaseURL: "https://pet-tracker-e6c45-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "pet-tracker-e6c45",
+  storageBucket: "pet-tracker-e6c45.appspot.com",
+  messagingSenderId: "279825651669",
+  appId: "1:279825651669:web:37b91896ac214102434f5c",
+  measurementId: "G-8660S9876X"
     };
     // Initialize Firebase
     firebase.initializeApp(firebaseConfig);
@@ -41,32 +48,22 @@
   </script>
   <script src="app.js" defer></script>
 
-  <title>Simple Marker</title>
-    <!-- The callback parameter is required, so we use console.debug as a noop -->
-    <script async src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBnCUu2cwIEjMsm4rVrW5bAm0Seur05bJo&callback=console.debug&libraries=maps,marker&v=beta">
-    </script>
-    <link rel="stylesheet" href="./style.css"/>
-
 </head>
 
 <body>
-  <gmp-map center="40.12150192260742,-100.45039367675781" zoom="4" map-id="DEMO_MAP_ID">
-    <gmp-advanced-marker position="40.12150192260742,-100.45039367675781" title="My location"></gmp-advanced-marker>
-  </gmp-map>
-
-  <h1>ESP32 Firebase Web App Example</h1>
-  <p>Reading int: <span id="reading-int"></span></p>
-  <p>Reading latitude: <span id="GPSLatReading"></span></p>
-  <p>Reading longitude: <span id="GPSLongReading"></span></p>
+  <h1>ESP32-CAM Pet Tracker</h1>
+  
   <p>Reading cam value: <span id="reading-cam"></span></p>
 
   <div class="topnav">
-    <h1>ESP32-CAM Web App <i class="fas fa-camera"></i></h1>
+    <h1>ESP32-CAM Pet Tracker <i class="fas fa-camera"></i></h1>
   </div>
     <p><img id="img" width="500px"></p> 
     <p>Last picture taken: <span id="date-time"></span></p>
     <button class="button" id="button" onclick = "necati()">ON</button>
+
     <div id="map"></div>
+
 </body>
 
 </html>
